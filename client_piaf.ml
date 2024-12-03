@@ -6,7 +6,7 @@ let api = "/api/epg_fr/known_udp_protocols/"
 
 let url = Sys.getenv "URL"
 
-let create_client env ~sw = 
+let create_client env ~sw =
   let open Piaf in
   let client_result = Client.create
     env 
@@ -54,14 +54,40 @@ let api_request2 env ~sw =
     Piaf.Status.to_code resp.status |> Eio.traceln "resp status: %d"
   | Error err -> failwith ("error resp: " ^ Piaf.Error.to_string err);;
 
+let api_request3 env ~sw =
+  Eio.traceln "starting request...";
+  match Piaf.Client.Oneshot.post 
+    ~config:{
+      Piaf.Config.default with 
+        allow_insecure = true;
+        connect_timeout = 1000000.0;
+    }
+    ~headers: (("Content-Type", "application/json") :: headers)
+    ~body:(Piaf.Body.of_string {| 
+    [
+      {
+        "port": "55",
+        "protocol": "test-james"
+      }
+    ] |})
+    ~sw
+    env
+    (Uri.of_string url)
+  with
+  | Ok resp -> 
+    let body = Piaf.Response.body resp in
+    let _ = Piaf.Body.drain body in 
+    Piaf.Status.to_code resp.status |> Eio.traceln "resp status: %d"
+  | Error err -> failwith ("error resp: " ^ Piaf.Error.to_string err);;
+
 let main env =
   let domain_mgr = Eio.Stdenv.domain_mgr env in
   let clock = Eio.Stdenv.clock env in
   Eio.Switch.run @@ fun sw ->
     let pool = Eio.Executor_pool.create ~sw domain_mgr ~domain_count:(Domain.recommended_domain_count ()) in
-    let task = Eio.Executor_pool.submit_exn pool ~weight:0.01 (fun () -> api_request2) in
+    let task = Eio.Executor_pool.submit_exn pool ~weight:0.01 (fun () -> api_request3) in
     let tasks = List.init parallel_count (fun _ -> fun () -> task env ~sw) in
-    Helper.wait_until clock ();
+    (* Helper.wait_until clock (); *)
     Eio.Fiber.all tasks;;
 
 let _ = Eio_main.run @@ fun env -> main env;;
